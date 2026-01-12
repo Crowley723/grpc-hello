@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -24,6 +25,17 @@ type server struct {
 }
 
 func (s *server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloResponse, error) {
+	var name string
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok {
+		name = md.Get("name")[0]
+	}
+
+	if name != req.Name {
+		log.Fatalf("name mismatch")
+	}
+
 	log.Printf("Received SayHello request from: %s", req.Name)
 	return &pb.HelloResponse{
 		Message: fmt.Sprintf("Hello, %s! Welcome to gRPC!", req.Name),
@@ -53,7 +65,6 @@ func runServer(port string) {
 }
 
 func runClient(serverAddr string, name string) {
-	// Set up a connection to the server
 	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
@@ -62,24 +73,25 @@ func runClient(serverAddr string, name string) {
 
 	client := pb.NewGreetServiceClient(conn)
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	rpcCtx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("name", name))
+
+	ctx, cancel := context.WithTimeout(rpcCtx, time.Second*5)
 	defer cancel()
 
-	// Call SayHello
 	log.Printf("Calling SayHello with name: %s", name)
 	helloResp, err := client.SayHello(ctx, &pb.HelloRequest{Name: name})
 	if err != nil {
 		log.Fatalf("SayHello failed: %v", err)
 	}
+
 	fmt.Printf("Response: %s\n", helloResp.Message)
 
-	// Call SayGoodbye
 	log.Printf("Calling SayGoodbye with name: %s", name)
 	goodbyeResp, err := client.SayGoodbye(ctx, &pb.GoodbyeRequest{Name: name})
 	if err != nil {
 		log.Fatalf("SayGoodbye failed: %v", err)
 	}
+
 	fmt.Printf("Response: %s\n", goodbyeResp.Message)
 }
 
